@@ -1,135 +1,95 @@
-import wave
-from piper import PiperVoice
-from time import time, sleep
-from sounddevice import OutputStream, RawOutputStream
-import numpy as np
-from queue import Queue
+import json
+import asyncio
+from time import time
 from threading import Thread
 
-class TTSHandler:
-    def __init__(self, model_path):
-        self.voice = PiperVoice.load(model_path, use_cuda=True)
-        self.sample_rate = self.voice.config.sample_rate
-        self.audio_queue = Queue()
-        self.current_synthesis = None
-        self.stream = None
-        self.synthesis_thread = None
-        self.is_playing = False
+import numpy as np
+from piper import PiperVoice
+from sounddevice import OutputStream
+from websockets.asyncio.client import connect
 
-    def setup_audio_stream(self):
-        def audio_callback(outdata, frames, time, status):
-            print(f"Audio callback called with {frames} frames")
-            try:
-                chunk = self.audio_queue.get_nowait()
-                if len(chunk) < frames:
-                    padded = np.zeros(frames, dtype=np.int16)
-                    padded[:len(chunk)] = chunk
-                    outdata[:] = padded.reshape(-1, 1)
-                else:
-                    print(f"Audio queue has {len(chunk)} frames {frames} requested")
-                    outdata[:] = chunk[:frames].reshape(-1, 1)
-                self.is_playing = True
-            except:
-                outdata.fill(0)
-                self.is_playing = False
-
-        self.stream = OutputStream(
-            samplerate=self.sample_rate,
-            channels=1,
-            dtype='int16',
-            callback=audio_callback,
-            blocksize=1024,
-            latency='low'
-        )
+class TTS:
+    def __init__(self, voice: PiperVoice):
+        self.voice = voice
+        self.stream = OutputStream(samplerate=voice.config.sample_rate, blocksize=1024, channels=1, dtype="int16")
         self.stream.start()
+        self.thread = None
+        self.stop = False
 
-    def cancel_current_audio(self, graceful=True, fade_ms=50):
-        """Cancel ongoing synthesis and playback"""
-        # Stop synthesis
-        if self.synthesis_thread and self.synthesis_thread.is_alive():
-            # Signal synthesis to stop (implementation depends on your threading)
-            pass
+    def say(self, text: str):
+        def audio_thread():
+            start = time()
+            latency = None
+            for chunk in self.voice.synthesize(text):
+                if latency is None:
+                    latency = time() - start
+                    print(f"Latency: {latency:.2f} seconds")
+                for x in np.array_split(chunk.audio_int16_array, self.stream.blocksize):
+                    if self.stop:
+                        # TODO: fade out instead
+                        quiet = np.zeros(self.stream.blocksize, dtype=np.int16)
+                        self.stream.write(quiet)
+                        return
+                    self.stream.write(x)
+            self.thread = None
 
-        # Clear audio queue with optional fade
-        if graceful and not self.audio_queue.empty():
-            try:
-                # Apply fade to first remaining chunk
-                first_chunk = self.audio_queue.get_nowait()
-                fade_samples = int(fade_ms * self.sample_rate / 1000)
-                fade_length = min(len(first_chunk), fade_samples)
+        self.cancel()
+        self.thread = Thread(target=audio_thread)
+        self.thread.start()
 
-                if fade_length > 0:
-                    fade_curve = np.linspace(1.0, 0.0, fade_length)
-                    first_chunk[:fade_length] = (first_chunk[:fade_length] * fade_curve).astype(np.int16)
-                    self.audio_queue.put(first_chunk)
-            except:
-                pass
+    def cancel(self):
+        if self.thread is None:
+            return False
 
-        # Clear remaining queue
-        while not self.audio_queue.empty():
-            try:
-                self.audio_queue.get_nowait()
-            except:
-                break
+        self.stop = True
+        self.thread.join()
+        self.thread = None
+        self.stop = False
+        return True
 
-# https://github.com/rhasspy/piper/discussions/326#discussioncomment-8855827
-def main():
+async def main():
     start = time()
-    model_path = "en_US-lessac-high.onnx"
-    model_path = "en_US-lessac-medium.onnx"
-    voice = PiperVoice.load(model_path, use_cuda=True)
-    #handler = TTSHandler(model_path)
-    #handler.setup_audio_stream()
-    print(f"Loaded voice in {time() - start:.2f} seconds")
+    male_voice = PiperVoice.load("en_US-danny-low.onnx", use_cuda=True)
+    female_voice = PiperVoice.load("en_US-lessac-medium.onnx", use_cuda=True)
+    print(f"Loaded voices in {time() - start:.2f} seconds")
 
-    dialogue = "All these bright lights and loud noises. I find it all so dreadfully...tedious. Or perhaps you've come to amuse me?"
+    tts_male = TTS(male_voice)
+    tts_female = TTS(female_voice)
 
-
-    """
-    start = time()
-    for chunk in voice.synthesize(dialogue):
-        for x in np.array_split(chunk.audio_int16_array, 1024):
-            handler.audio_queue.put(x)
-        elapsed = time() - start
-        start = time()
-        print(f"Synthesized in {elapsed:.2f} seconds")
-    """
-
-
-    """
-    with wave.open("test.wav", "wb") as wav_file:
-        start = time()
-        voice.synthesize_wav(dialogue, wav_file)
-        print(f"Synthesized in {time() - start:.2f} seconds")
-    """
-
-    stream = OutputStream(samplerate=voice.config.sample_rate, blocksize=1024, channels=1, dtype="int16")
-    stream.start()
-
-    def audio_thread(stop: list[bool]):
-        start = time()
-        latency = None
-        for chunk in voice.synthesize(dialogue):
-            if latency is None:
-                latency = time() - start
-                print(f"Latency: {latency:.2f} seconds")
-
-            for x in np.array_split(chunk.audio_int16_array, 1024):
-                stream.write(x)
-                if stop[0]:
-                    print("Stopping!")
-                    return
-
-    stop = [False]
-    thread = Thread(target=audio_thread, args=(stop,))
-    thread.start()
-
-    sleep(1)
-    stop[0] = True
-
-    thread.join()
-
-
+    # Append JSON messages to a file with the datetime
+    with open("history.log", "a", encoding="utf-8") as log:
+        async with connect("ws://localhost:1567/Messages") as ws:
+            while True:
+                text = await ws.recv(decode=True)
+                message = json.loads(text)
+                log.write(f"{time()} {message}\n")
+                match message["Type"]:
+                    case "Cancel":
+                        f = tts_female.cancel()
+                        m = tts_male.cancel()
+                        if f or m:
+                            print("[cancel]")
+                    case "Say":
+                        speaker = message["Speaker"]
+                        if not speaker:
+                            speaker = "Announcement"
+                        npc_id = message["NpcId"]
+                        race = message["Race"]
+                        body_type = message["BodyType"]
+                        gender = message["Gender"]
+                        payload = message["Payload"]
+                        print(f"{speaker}: {payload}")
+                        if gender == "Female":
+                            tts_male.cancel()
+                            tts_female.say(message["Payload"])
+                        else:
+                            tts_female.cancel()
+                            tts_male.say(message["Payload"])
+                    case _:
+                        print(f"Unknown message: {message}")
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Exiting...")

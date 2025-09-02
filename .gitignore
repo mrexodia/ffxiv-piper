@@ -12,3 +12,4 @@ wheels/
 *.wav
 *.onnx
 *.onnx.json
+*.log

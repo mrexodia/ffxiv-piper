@@ -1,6 +1,6 @@
 import json
 import asyncio
-from time import time
+from time import time, sleep
 from threading import Thread
 
 import numpy as np
@@ -58,37 +58,42 @@ async def main():
 
     # Append JSON messages to a file with the datetime
     with open("history.log", "a", encoding="utf-8", buffering=1) as log:
-        async with connect("ws://localhost:1567/Messages") as ws:
-            while True:
-                text = await ws.recv(decode=True)
-                log.write(f"{time()} {text}\n")
-                message = json.loads(text)
-                match message["Type"]:
-                    case "Cancel":
-                        f = tts_female.cancel()
-                        m = tts_male.cancel()
-                        if f or m:
-                            print("[cancel]")
-                    case "Say":
-                        speaker = message["Speaker"]
-                        if not speaker:
-                            speaker = "Announcement"
-                        npc_id = message["NpcId"]
-                        race = message["Race"]
-                        body_type = message["BodyType"]
-                        gender = message["Gender"]
-                        payload = message["Payload"]
-                        print(f"[{npc_id}] {speaker}: {payload}")
-                        # Clean up the payload for improved TTS flow
-                        payload = payload.replace(" - ", ": ").replace("...", ", ")
-                        if gender == "Female":
-                            tts_male.cancel()
-                            tts_female.say(payload)
-                        else:
-                            tts_female.cancel()
-                            tts_male.say(payload)
-                    case _:
-                        print(f"Unknown message: {message}")
+        while True:
+            try:
+                async with connect("ws://localhost:1567/Messages") as ws:
+                    while True:
+                        text = await ws.recv(decode=True)
+                        log.write(f"{time()} {text}\n")
+                        message = json.loads(text)
+                        match message["Type"]:
+                            case "Cancel":
+                                f = tts_female.cancel()
+                                m = tts_male.cancel()
+                                if f or m:
+                                    print("[cancel]")
+                            case "Say":
+                                speaker = message["Speaker"]
+                                if not speaker:
+                                    speaker = "Announcement"
+                                npc_id = message["NpcId"]
+                                race = message["Race"]
+                                body_type = message["BodyType"]
+                                gender = message["Gender"]
+                                payload = message["Payload"]
+                                print(f"[{npc_id}] {speaker}: {payload}")
+                                # Clean up the payload for improved TTS flow
+                                payload = payload.replace(" - ", ": ").replace("...", ", ")
+                                if gender == "Female":
+                                    tts_male.cancel()
+                                    tts_female.say(payload)
+                                else:
+                                    tts_female.cancel()
+                                    tts_male.say(payload)
+                            case _:
+                                print(f"Unknown message: {message}")
+            except ConnectionError as e:
+                print(f"Error: {e}")
+            sleep(1.0)
 
 if __name__ == "__main__":
     try:

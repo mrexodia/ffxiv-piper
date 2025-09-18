@@ -1,5 +1,7 @@
 import json
 import asyncio
+import sys
+import os
 from time import time, sleep
 from threading import Thread
 
@@ -7,6 +9,7 @@ import numpy as np
 from piper import PiperVoice
 from sounddevice import OutputStream
 from websockets.asyncio.client import connect
+from filelock import FileLock
 
 class TTS:
     def __init__(self, voice: PiperVoice):
@@ -48,6 +51,12 @@ class TTS:
         return True
 
 async def main():
+    lock_file = FileLock("ffxiv-piper.lock")
+    try:
+        lock_file.acquire(timeout=0)
+    except:
+        print("Another instance is already running. Exiting...")
+        sys.exit(1)
     start = time()
     male_voice = PiperVoice.load("en_US-danny-low.onnx", use_cuda=True)
     female_voice = PiperVoice.load("en_US-lessac-medium.onnx", use_cuda=True)

@@ -1,6 +1,30 @@
 # ffxiv-piper
 
-## Voices
+Simple text-to-speech (TTS) server for FFXIV based on [Piper](https://github.com/rhasspy/piper) optimized for low latency. The [FFXIV-TTS](https://github.com/MinhakaDev/FFXIV-TTS) plugin has extremely high latency with the internal voices, so you can configure the websocket instead and use this server.
+
+## Installation
+
+- Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
+- `uv run python -m piper.download_voices en_US-lessac-medium en_US-danny-low`
+- `uv run main.py`
+
+Make sure to configure the FFXIV-TTS plugin to serve on `localhost` port `1567`, otherwise it will not work.
+
+The latency is usually between 200-600ms on my machine (RTX 3090):
+
+```
+Raya-O-Senna: Forgive me, John. I would be alone with my thoughts for a while. Worry not: I will find a way to deal with A-Ruhn.
+Latency: 0.60 seconds
+Raya-O-Senna: Ever does it hearten me to see your face, John. What brings you to the Twelveswood today?
+Latency: 0.23 seconds
+Raya-O-Senna: Considering the Amdapori horrors that were but recently in our midst, I would say that we fare rather well. The forest once again knows serenity, and we have you to thank for this, John.
+```
+
+The history is saved to `history.log`.
+
+## Development
+
+List available voices:
 
 ```sh
 $ uv run python -m piper.download_voices | rg en_
@@ -41,5 +65,4 @@ en_US-ryan-high
 en_US-ryan-low
 en_US-ryan-medium
 en_US-sam-medium
-$ uv run python -m piper.download_voices en_US-lessac-medium
 ```

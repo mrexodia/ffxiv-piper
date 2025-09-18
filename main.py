@@ -57,12 +57,12 @@ async def main():
     tts_female = TTS(female_voice)
 
     # Append JSON messages to a file with the datetime
-    with open("history.log", "a", encoding="utf-8") as log:
+    with open("history.log", "a", encoding="utf-8", buffering=1) as log:
         async with connect("ws://localhost:1567/Messages") as ws:
             while True:
                 text = await ws.recv(decode=True)
+                log.write(f"{time()} {text}\n")
                 message = json.loads(text)
-                log.write(f"{time()} {message}\n")
                 match message["Type"]:
                     case "Cancel":
                         f = tts_female.cancel()
@@ -78,13 +78,15 @@ async def main():
                         body_type = message["BodyType"]
                         gender = message["Gender"]
                         payload = message["Payload"]
-                        print(f"{speaker}: {payload}")
+                        print(f"[{npc_id}] {speaker}: {payload}")
+                        # Clean up the payload for improved TTS flow
+                        payload = payload.replace(" - ", ": ").replace("...", ", ")
                         if gender == "Female":
                             tts_male.cancel()
-                            tts_female.say(message["Payload"])
+                            tts_female.say(payload)
                         else:
                             tts_female.cancel()
-                            tts_male.say(message["Payload"])
+                            tts_male.say(payload)
                     case _:
                         print(f"Unknown message: {message}")
 

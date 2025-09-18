@@ -1,6 +1,6 @@
 # ffxiv-piper
 
-Simple text-to-speech (TTS) server for FFXIV based on [Piper](https://github.com/rhasspy/piper) optimized for low latency. The [FFXIV-TTS](https://github.com/MinhakaDev/FFXIV-TTS) plugin has extremely high latency with the internal voices, so you can configure the websocket instead and use this server.
+Simple text-to-speech (TTS) server for FFXIV based on [Piper](https://github.com/rhasspy/piper) optimized for low latency. The [TextToTalk](https://github.com/karashiiro/TextToTalk) plugin has extremely high latency with the internal voices, so you can configure the websocket instead and use this server.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Simple text-to-speech (TTS) server for FFXIV based on [Piper](https://github.com
 - `uv run python -m piper.download_voices en_US-lessac-medium en_US-danny-low`
 - `uv run main.py`
 
-Make sure to configure the FFXIV-TTS plugin to serve on `localhost` port `1567`, otherwise it will not work.
+Make sure to configure the TextToTalk plugin to serve on `localhost` port `1567`, otherwise it will not work.
 
 The latency is usually between 200-600ms on my machine (RTX 3090):
 
@@ -66,3 +66,4 @@ en_US-ryan-low
 en_US-ryan-medium
 en_US-sam-medium
 ```
+
